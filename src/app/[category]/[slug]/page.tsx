@@ -5,6 +5,8 @@ import PostCard from '@/components/post/PostCard';
 import StarRating from '@/components/ui/StarRating';
 import Avatar from '@/components/ui/Avatar';
 import Badge from '@/components/ui/Badge';
+import PostEngagement from '@/components/post/PostEngagement';
+import PostComments from '@/components/post/PostComments';
 import { formatDate, readingTime, formatNumber, getCategoryBySlug, CATEGORIES } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/server';
 import { Heart, MessageCircle, Share2, Clock, ExternalLink, ArrowLeft, BookmarkPlus, Copy, Globe } from 'lucide-react';
@@ -65,6 +67,11 @@ export default async function PostPage({ params }: PostPageProps) {
     },
     author: Array.isArray(postData.author) ? postData.author[0] : postData.author,
   };
+
+  const { count: likeCount } = await supabase
+    .from('likes')
+    .select('*', { count: 'exact', head: true })
+    .eq('post_id', post.id);
 
   const { data: commentsData } = await supabase
     .from('comments')
@@ -171,27 +178,11 @@ export default async function PostPage({ params }: PostPageProps) {
             {/* Main Content */}
             <div>
               {/* Engagement Bar */}
-              <div className="engagement-bar">
-                <div className="engagement-left">
-                  <button className="engagement-btn" id="like-btn">
-                    <Heart size={16} /> {formatNumber(post.like_count || 0)} Likes
-                  </button>
-                  <button className="engagement-btn" id="comment-jump-btn">
-                    <MessageCircle size={16} /> {comments.length} Comments
-                  </button>
-                  <button className="engagement-btn" id="bookmark-btn">
-                    <BookmarkPlus size={16} /> Save
-                  </button>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="engagement-btn" title="Copy link" id="share-copy-btn">
-                    <Copy size={14} />
-                  </button>
-                  <button className="engagement-btn" title="Share on Twitter" id="share-twitter-btn">
-                    <Globe size={14} />
-                  </button>
-                </div>
-              </div>
+              <PostEngagement 
+                postId={post.id} 
+                initialLikeCount={likeCount || 0} 
+                commentCount={comments.length} 
+              />
 
               {/* Post Content */}
               <div className="prose post-detail-content" style={{ maxWidth: '100%' }}>
@@ -246,46 +237,10 @@ export default async function PostPage({ params }: PostPageProps) {
               </div>
 
               {/* Comments Section */}
-              <div className="comments-section" style={{ maxWidth: '100%' }} id="comments">
-                <h3 className="comments-title">
-                  <MessageCircle size={20} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '8px' }} />
-                  Comments ({comments.length})
-                </h3>
-
-                {/* Comment Form */}
-                <form className="comment-form" action="#">
-                  <textarea
-                    className="textarea-field"
-                    placeholder="Share your thoughts on this review..."
-                    rows={3}
-                    id="comment-input"
-                  />
-                  <button type="submit" className="btn btn-primary btn-md" style={{ alignSelf: 'flex-end' }}>
-                    Post Comment
-                  </button>
-                </form>
-
-                {/* Comment List */}
-                <div className="comment-list">
-                  {comments.map((comment) => (
-                    <div key={comment.id} className="comment-item">
-                      <Avatar name={comment.user?.display_name || 'User'} size="sm" />
-                      <div className="comment-body">
-                        <div className="comment-header">
-                          <span className="comment-author">{comment.user?.display_name}</span>
-                          <span className="comment-time">{formatDate(comment.created_at)}</span>
-                        </div>
-                        <p className="comment-content">{comment.content}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {comments.length === 0 && (
-                    <p style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', padding: '32px 0' }}>
-                      No comments yet. Be the first to share your thoughts!
-                    </p>
-                  )}
-                </div>
-              </div>
+              <PostComments 
+                postId={post.id} 
+                initialComments={comments as any} 
+              />
             </div>
 
             {/* Sidebar */}

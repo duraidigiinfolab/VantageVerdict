@@ -54,7 +54,9 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
     .select(`
       *,
       category:categories!inner(name, slug, icon),
-      author:users(display_name, avatar_url)
+      author:users(display_name, avatar_url),
+      likes:likes(count),
+      comments:comments(count)
     `)
     .eq('status', 'published')
     .eq('categories.slug', category)
@@ -70,6 +72,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         color: staticCategory?.color
       },
       author: Array.isArray(p.author) ? p.author[0] : p.author,
+      like_count: p.likes?.[0]?.count || 0,
+      comment_count: p.comments?.[0]?.count || 0,
     };
   });
 

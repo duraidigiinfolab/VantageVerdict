@@ -2,17 +2,23 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Menu, X, Search, Sun, Moon, User, LogIn } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Menu, X, Search, Sun, Moon, User, LogIn, LogOut, Settings } from 'lucide-react';
 import { useTheme } from '@/components/common/ThemeProvider';
 import { CATEGORIES } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
 export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  
   const pathname = usePathname();
+  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
+  const supabase = createClient();
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -23,6 +29,39 @@ export default function Header() {
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    // Get initial session
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      if (user) {
+        // Check if user is admin in DB
+        const { data } = await supabase.from('users').select('role').eq('id', user.id).single();
+        if (data?.role === 'admin') setIsAdmin(true);
+      }
+    };
+    
+    fetchUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const { data } = await supabase.from('users').select('role').eq('id', session.user.id).single();
+        setIsAdmin(data?.role === 'admin');
+      } else {
+        setIsAdmin(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.refresh();
+  };
 
   return (
     <>
@@ -73,10 +112,24 @@ export default function Header() {
             </button>
 
             {/* Auth Buttons */}
-            <Link href="/auth/login" className="header-login-btn" id="login-btn">
-              <LogIn size={16} />
-              <span>Sign In</span>
-            </Link>
+            {user ? (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {isAdmin && (
+                  <Link href="/admin" className="header-action-btn" title="Admin Dashboard">
+                    <Settings size={18} />
+                  </Link>
+                )}
+                <button onClick={handleSignOut} className="header-login-btn" style={{ background: 'transparent', border: '1px solid var(--color-border)' }}>
+                  <LogOut size={16} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            ) : (
+              <Link href="/auth/login" className="header-login-btn" id="login-btn">
+                <LogIn size={16} />
+                <span>Sign In</span>
+              </Link>
+            )}
 
             {/* Mobile Menu Toggle */}
             <button
@@ -147,13 +200,30 @@ export default function Header() {
               ))}
             </div>
             <div className="mobile-menu-footer">
-              <Link href="/auth/login" className="mobile-menu-auth-btn">
-                <User size={18} />
-                Sign In
-              </Link>
-              <Link href="/auth/signup" className="mobile-menu-auth-btn mobile-menu-signup">
-                Get Started
-              </Link>
+              {user ? (
+                <>
+                  {isAdmin && (
+                    <Link href="/admin" className="mobile-menu-auth-btn" style={{ marginBottom: '8px' }}>
+                      <Settings size={18} />
+                      Dashboard
+                    </Link>
+                  )}
+                  <button onClick={handleSignOut} className="mobile-menu-auth-btn" style={{ width: '100%', background: 'var(--color-bg-tertiary)' }}>
+                    <LogOut size={18} />
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link href="/auth/login" className="mobile-menu-auth-btn">
+                    <User size={18} />
+                    Sign In
+                  </Link>
+                  <Link href="/auth/signup" className="mobile-menu-auth-btn mobile-menu-signup">
+                    Get Started
+                  </Link>
+                </>
+              )}
             </div>
           </nav>
         </div>

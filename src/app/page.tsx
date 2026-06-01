@@ -13,7 +13,9 @@ export default async function HomePage() {
     .select(`
       *,
       category:categories(name, slug, icon),
-      author:users(display_name, avatar_url)
+      author:users(display_name, avatar_url),
+      likes:likes(count),
+      comments:comments(count)
     `)
     .eq('status', 'published')
     .order('created_at', { ascending: false })
@@ -25,7 +27,9 @@ export default async function HomePage() {
     .select(`
       *,
       category:categories(name, slug, icon),
-      author:users(display_name, avatar_url)
+      author:users(display_name, avatar_url),
+      likes:likes(count),
+      comments:comments(count)
     `)
     .eq('status', 'published')
     .gte('rating', 4.5)
@@ -38,6 +42,8 @@ export default async function HomePage() {
     ...p,
     category: Array.isArray(p.category) ? p.category[0] : p.category,
     author: Array.isArray(p.author) ? p.author[0] : p.author,
+    like_count: p.likes?.[0]?.count || 0,
+    comment_count: p.comments?.[0]?.count || 0,
   });
 
   const latestPosts = (latestPostsData || []).map(mapPost);
