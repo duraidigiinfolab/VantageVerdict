@@ -186,7 +186,7 @@ export default async function PostPage({ params }: PostPageProps) {
 
               {/* Post Content */}
               <div className="prose post-detail-content" style={{ maxWidth: '100%' }}>
-                {post.content.split('\n\n').map((paragraph, i) => {
+                {String(post.content || '').split('\n\n').map((paragraph: string, i: number) => {
                   if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
                     return <h3 key={i}>{paragraph.replace(/\*\*/g, '')}</h3>;
                   }
@@ -202,7 +202,7 @@ export default async function PostPage({ params }: PostPageProps) {
                     Where to Buy
                   </h3>
                   <div className="affiliate-links-grid">
-                    {post.affiliate_links.map((link, i) => (
+                    {(post.affiliate_links || []).map((link: any, i: number) => (
                       <a
                         key={i}
                         href={link.url}
