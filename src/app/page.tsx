@@ -2,13 +2,59 @@ import Link from 'next/link';
 import { ArrowRight, TrendingUp, Sparkles } from 'lucide-react';
 import PostCard from '@/components/post/PostCard';
 import { CATEGORIES } from '@/lib/utils';
-import { getFeaturedPosts, getLatestPosts, getMostLikedPosts } from '@/lib/demo-data';
+import { createClient } from '@/lib/supabase/server';
 
-export default function HomePage() {
-  const featuredPosts = getFeaturedPosts(3);
-  const latestPosts = getLatestPosts(6);
-  const mostLikedPosts = getMostLikedPosts(5);
-  const mainFeatured = featuredPosts[0];
+export default async function HomePage() {
+  const supabase = await createClient();
+
+  // Fetch Latest Posts
+  const { data: latestPostsData } = await supabase
+    .from('posts')
+    .select(`
+      *,
+      category:categories(name, slug, icon),
+      author:users(display_name, avatar_url)
+    `)
+    .eq('status', 'published')
+    .order('created_at', { ascending: false })
+    .limit(6);
+
+  // Fetch Featured Post (Just the newest one with a high rating for now)
+  const { data: featuredPostData } = await supabase
+    .from('posts')
+    .select(`
+      *,
+      category:categories(name, slug, icon),
+      author:users(display_name, avatar_url)
+    `)
+    .eq('status', 'published')
+    .gte('rating', 4.5)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  // Map database entries to Post type. Provide fallbacks since Supabase returns arrays for foreign keys sometimes depending on relationship.
+  const mapPost = (p: any) => ({
+    ...p,
+    category: Array.isArray(p.category) ? p.category[0] : p.category,
+    author: Array.isArray(p.author) ? p.author[0] : p.author,
+  });
+
+  const latestPosts = (latestPostsData || []).map(mapPost);
+  const mainFeatured = featuredPostData ? mapPost(featuredPostData) : latestPosts[0];
+  const mostLikedPosts = latestPosts.slice(0, 5); // Fallback for most liked until we add actual likes counts
+
+  // Re-map colors to categories from our static constants to keep the UI colorful
+  const addColorsToPosts = (posts: any[]) => posts.map(post => {
+    const staticCategory = CATEGORIES.find(c => c.slug === post.category?.slug);
+    if (staticCategory && post.category) {
+      post.category.color = staticCategory.color;
+    }
+    return post;
+  });
+
+  const finalLatest = addColorsToPosts(latestPosts);
+  const finalFeatured = mainFeatured ? addColorsToPosts([mainFeatured])[0] : null;
 
   return (
     <>
@@ -67,7 +113,7 @@ export default function HomePage() {
       </section>
 
       {/* ===== FEATURED POST ===== */}
-      {mainFeatured && (
+      {finalFeatured && (
         <section className="posts-section">
           <div className="container">
             <div className="section-header">
@@ -78,7 +124,7 @@ export default function HomePage() {
                 <p className="section-subtitle">Our editor&apos;s top pick this month</p>
               </div>
             </div>
-            <PostCard post={mainFeatured} variant="featured" />
+            <PostCard post={finalFeatured} variant="featured" />
           </div>
         </section>
       )}
@@ -98,11 +144,19 @@ export default function HomePage() {
                   View All <ArrowRight size={16} />
                 </Link>
               </div>
-              <div className="posts-grid">
-                {latestPosts.map((post) => (
-                  <PostCard key={post.id} post={post} />
-                ))}
-              </div>
+              
+              {finalLatest.length > 0 ? (
+                <div className="posts-grid">
+                  {finalLatest.map((post) => (
+                    <PostCard key={post.id} post={post} />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--color-bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
+                  <h3 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>No reviews yet</h3>
+                  <p style={{ color: 'var(--color-text-tertiary)', fontSize: '0.95rem' }}>Create your first review in the admin dashboard to see it here!</p>
+                </div>
+              )}
             </div>
 
             {/* Sidebar */}
@@ -113,9 +167,11 @@ export default function HomePage() {
                   Most Loved
                 </h3>
                 <div className="sidebar-posts">
-                  {mostLikedPosts.map((post) => (
+                  {mostLikedPosts.length > 0 ? mostLikedPosts.map((post) => (
                     <PostCard key={post.id} post={post} variant="compact" />
-                  ))}
+                  )) : (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--color-text-tertiary)' }}>No trending posts yet.</p>
+                  )}
                 </div>
               </div>
 

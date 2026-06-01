@@ -2,17 +2,14 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import PostCard from '@/components/post/PostCard';
 import { getCategoryBySlug, CATEGORIES } from '@/lib/utils';
-import { getPostsByCategory } from '@/lib/demo-data';
+import { createClient } from '@/lib/supabase/server';
 import type { CategorySlug } from '@/types';
 
+// Let's keep validCategories to restrict routes for known categories
 const validCategories: CategorySlug[] = ['products', 'places', 'events', 'recipes', 'culture'];
 
 interface CategoryPageProps {
   params: Promise<{ category: string }>;
-}
-
-export async function generateStaticParams() {
-  return validCategories.map((category) => ({ category }));
 }
 
 export async function generateMetadata({ params }: CategoryPageProps): Promise<Metadata> {
@@ -37,7 +34,44 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   }
 
   const cat = getCategoryBySlug(category as CategorySlug)!;
-  const posts = getPostsByCategory(category);
+
+  const supabase = await createClient();
+  const { data: dbPosts } = await supabase
+    .from('posts')
+    .select(`
+      *,
+      category:categories(name, slug, icon),
+      author:users(display_name, avatar_url)
+    `)
+    .eq('status', 'published')
+    .eq('category.slug', category) // Wait, we can't filter joined tables like this unless it's inner join.
+    // Actually, we should get the category ID first, OR just filter on client, but better to use `categories!inner(...)`
+    ;
+
+  // Proper join filtering in PostgREST requires !inner
+  const { data: categoryPostsData } = await supabase
+    .from('posts')
+    .select(`
+      *,
+      category:categories!inner(name, slug, icon),
+      author:users(display_name, avatar_url)
+    `)
+    .eq('status', 'published')
+    .eq('categories.slug', category)
+    .order('created_at', { ascending: false });
+
+  // Map database entries to Post type
+  const posts = (categoryPostsData || []).map((p: any) => {
+    const staticCategory = CATEGORIES.find(c => c.slug === category);
+    return {
+      ...p,
+      category: {
+        ...(Array.isArray(p.category) ? p.category[0] : p.category),
+        color: staticCategory?.color
+      },
+      author: Array.isArray(p.author) ? p.author[0] : p.author,
+    };
+  });
 
   return (
     <div className="static-page">

@@ -5,8 +5,8 @@ import PostCard from '@/components/post/PostCard';
 import StarRating from '@/components/ui/StarRating';
 import Avatar from '@/components/ui/Avatar';
 import Badge from '@/components/ui/Badge';
-import { getPostBySlug, getPostsByCategory, getCommentsForPost } from '@/lib/demo-data';
-import { formatDate, readingTime, formatNumber, getCategoryBySlug } from '@/lib/utils';
+import { formatDate, readingTime, formatNumber, getCategoryBySlug, CATEGORIES } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/server';
 import { Heart, MessageCircle, Share2, Clock, ExternalLink, ArrowLeft, BookmarkPlus, Copy, Globe } from 'lucide-react';
 import type { CategorySlug } from '@/types';
 
@@ -16,7 +16,9 @@ interface PostPageProps {
 
 export async function generateMetadata({ params }: PostPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const post = getPostBySlug(slug);
+  const supabase = await createClient();
+  const { data: post } = await supabase.from('posts').select('*, author:users(display_name)').eq('slug', slug).single();
+  
   if (!post) return {};
   return {
     title: post.title,
@@ -25,8 +27,8 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
       title: post.title,
       description: post.excerpt,
       type: 'article',
-      publishedTime: post.published_at || undefined,
-      authors: [post.author?.display_name || 'VantageVerdict'],
+      publishedTime: post.published_at || post.created_at,
+      authors: [(Array.isArray(post.author) ? post.author[0] : post.author)?.display_name || 'VantageVerdict'],
     },
     twitter: {
       card: 'summary_large_image',
@@ -38,14 +40,61 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
 
 export default async function PostPage({ params }: PostPageProps) {
   const { category, slug } = await params;
-  const post = getPostBySlug(slug);
+  const supabase = await createClient();
 
-  if (!post) {
+  const { data: postData } = await supabase
+    .from('posts')
+    .select(`
+      *,
+      category:categories(name, slug, icon),
+      author:users(display_name, avatar_url, role)
+    `)
+    .eq('slug', slug)
+    .single();
+
+  if (!postData) {
     notFound();
   }
 
-  const comments = getCommentsForPost(post.id);
-  const relatedPosts = getPostsByCategory(category).filter(p => p.id !== post.id).slice(0, 3);
+  const staticCategory = CATEGORIES.find(c => c.slug === category);
+  const post = {
+    ...postData,
+    category: {
+      ...(Array.isArray(postData.category) ? postData.category[0] : postData.category),
+      color: staticCategory?.color
+    },
+    author: Array.isArray(postData.author) ? postData.author[0] : postData.author,
+  };
+
+  const { data: commentsData } = await supabase
+    .from('comments')
+    .select('*, user:users(display_name, avatar_url)')
+    .eq('post_id', post.id)
+    .eq('is_approved', true)
+    .order('created_at', { ascending: true });
+
+  const comments = (commentsData || []).map(c => ({
+    ...c,
+    user: Array.isArray(c.user) ? c.user[0] : c.user,
+  }));
+
+  const { data: relatedPostsData } = await supabase
+    .from('posts')
+    .select(`*, category:categories!inner(name, slug, icon), author:users(display_name, avatar_url)`)
+    .eq('status', 'published')
+    .eq('categories.slug', category)
+    .neq('id', post.id)
+    .limit(3);
+
+  const relatedPosts = (relatedPostsData || []).map((p: any) => ({
+    ...p,
+    category: {
+      ...(Array.isArray(p.category) ? p.category[0] : p.category),
+      color: staticCategory?.color
+    },
+    author: Array.isArray(p.author) ? p.author[0] : p.author,
+  }));
+
   const cat = getCategoryBySlug(category as CategorySlug);
   const readTime = readingTime(post.content);
 
@@ -56,7 +105,7 @@ export default async function PostPage({ params }: PostPageProps) {
     name: post.title,
     description: post.excerpt,
     author: { '@type': 'Person', name: post.author?.display_name },
-    datePublished: post.published_at,
+    datePublished: post.published_at || post.created_at,
     reviewRating: {
       '@type': 'Rating',
       ratingValue: post.rating,

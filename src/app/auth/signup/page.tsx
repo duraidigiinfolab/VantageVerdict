@@ -2,16 +2,51 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import Input from '@/components/ui/Input';
 import { Mail, Lock, User, UserPlus } from 'lucide-react';
 
 export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const supabase = createClient();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 1500);
+    setError(null);
+
+    const formData = new FormData(e.currentTarget);
+    const displayName = formData.get('displayName') as string;
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+    const confirmPassword = formData.get('confirmPassword') as string;
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      setIsLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: displayName,
+        },
+      },
+    });
+
+    if (error) {
+      setError(error.message);
+      setIsLoading(false);
+    } else {
+      router.push('/admin');
+      router.refresh();
+    }
   };
 
   return (
@@ -46,8 +81,14 @@ export default function SignupPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
+          {error && (
+            <div style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-error)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              {error}
+            </div>
+          )}
           <Input
             label="Display Name"
+            name="displayName"
             type="text"
             placeholder="Your Name"
             icon={<User size={16} />}
@@ -56,6 +97,7 @@ export default function SignupPage() {
           />
           <Input
             label="Email"
+            name="email"
             type="email"
             placeholder="you@example.com"
             icon={<Mail size={16} />}
@@ -64,6 +106,7 @@ export default function SignupPage() {
           />
           <Input
             label="Password"
+            name="password"
             type="password"
             placeholder="Min. 8 characters"
             icon={<Lock size={16} />}
@@ -73,6 +116,7 @@ export default function SignupPage() {
           />
           <Input
             label="Confirm Password"
+            name="confirmPassword"
             type="password"
             placeholder="Repeat password"
             icon={<Lock size={16} />}
